@@ -1,5 +1,3 @@
-
-export PATH="$HOME/.local/bin:$PATH"
 **Directory layout**
 
 ```bash
