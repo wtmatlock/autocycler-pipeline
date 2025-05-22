@@ -128,7 +128,7 @@ process autocycler_subsample {
 
 process autocycler_assemble {
 
-  tag { "assemble:${sample_id}:${asm}" }
+  tag {"assemble:${sample_id}:${asm}"}
 
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
@@ -140,7 +140,7 @@ process autocycler_assemble {
     tuple val(sample_id), path(reads), val(asm), path(script), val(threads), path(gsize)
 
   output:
-    tuple val(sample_id), path("assemblies/${sample_id}_${asm}_${read_id}.fasta")
+    tuple val(sample_id), path("*.fasta")
   
   script:
   """
