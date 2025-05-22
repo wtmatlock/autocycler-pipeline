@@ -44,9 +44,6 @@ Channel
   assembly_tasks.view()
   assembled_ch = autocycler_assemble(assembly_tasks)
 
-  // Step 5: Optional cleanup of subsampled FASTQs
-  //subsampled_reads_ch.subscribe { sample_id, reads_dir, _ -> cleanup_reads(reads_dir) }
-
   // Step 6: Compress assembled contigs into unitig graphs
   // Group assemblies by sample_id
   //assembled_grouped = assembled_ch.groupTuple(by: 0)
@@ -119,7 +116,6 @@ process autocycler_subsample {
     tuple val(sample_id), path("subsampled_reads/*.fastq"), path(gsize)
 
   script:
-  // Split reads into multiple subsets for consensus
   """
   mkdir -p subsampled_reads
   autocycler subsample \
@@ -138,27 +134,25 @@ process autocycler_assemble {
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}/${asm}", mode: 'copy'
+  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "assemblies/*.fasta"
 
   input:
     tuple val(sample_id), path(reads), val(asm), path(script), val(threads), path(gsize)
 
   output:
-    val(sample_id)
+    tuple val(sample_id), path("assemblies/${sample_id}_${asm}_${read_id}.fasta")
   
   script:
   """
-  mkdir -p assemblies/${sample_id}/${asm}
+  read_id=\$(basename ${reads} | sed 's/\\.fastq\\(\\.gz\\)\\?\$//')
   chmod +x "$script"
-  "$script" \
-    ${reads} \
-    assemblies/${sample_id}/${asm} \
-    $threads \
+  "$script" \\
+    ${reads} \\
+    "${sample_id}_${asm}_\${read_id}" \\
+    "$threads" \\
     \$(head -n1 "$gsize")
-  echo -e "${sample_id}\t${asm}\tassemblies/${sample_id}/${asm}"
   """
 }
-
 
 process autocycler_compress {
   
