@@ -30,7 +30,7 @@ Channel
 
   // Step 4: Assemble each subsample with each assembler script in /bin
   // assemblers = ['canu','flye','miniasm','raven']
-  assemblers = ['raven']
+  assemblers = ['flye','raven']
 
   assembly_tasks = subsampled_reads_ch
     .flatMap { sample_id, fastq_files, gsize ->
@@ -43,16 +43,17 @@ Channel
 
   assembly_tasks.view()
   assembled_ch = autocycler_assemble(assembly_tasks)
+  assembled_ch.view()
 
-  // Step 6: Compress assembled contigs into unitig graphs
+  // Step 5: Compress assembled contigs into unitig graphs
   // Group assemblies by sample_id
   //assembled_grouped = assembled_ch.groupTuple(by: 0)
   //compressed_ch = autocycler_compress(assembled_grouped)
 
-  // Step 7: Cluster unitigs per sample
+  // Step 6: Cluster unitigs per sample
   //clustered_ch = autocycler_cluster(compressed_ch)
 
-  // Step 8: Trim and resolve clusters in series
+  // Step 7: Trim and resolve clusters in series
   //trimmed_ch = autocycler_trim(
   //  clustered_ch.flatMap { sample_id, clusters ->
   //  clusters.collect { cluster_dir -> tuple(sample_id, cluster_dir) }
@@ -63,7 +64,7 @@ Channel
   //resolved_ch = autocycler_resolve(trimmed_ch)
 
 
-  // Step 9: Combine final GFA graphs per sample
+  // Step 8: Combine final GFA graphs per sample
   // Group resolved graphs by sample_id
   // combined = resolved_ch.groupBy { it[0] }
   // combined.subscribe { sample_id, records ->
@@ -72,7 +73,6 @@ Channel
   // }
 
 }
-
 
 // Processes
 
@@ -93,6 +93,7 @@ process genome_size {
     tuple val(sample_id), path(long_reads), path("${sample_id}.gsize.txt")
 
 script:
+// Compute genome size using Raven helper script (skipping polishing step)
 """
 chmod +x "$script"
 "$script" "$long_reads" "$threads" > ${sample_id}.gsize.txt
@@ -116,6 +117,7 @@ process autocycler_subsample {
     tuple val(sample_id), path("subsampled_reads/*.fastq"), path(gsize)
 
   script:
+  // Subsample reads using the genome size
   """
   mkdir -p subsampled_reads
   autocycler subsample \
@@ -143,6 +145,8 @@ process autocycler_assemble {
     tuple val(sample_id), path("*.fasta")
   
   script:
+  // Assemble reads using the specified assembler script
+  // Canu requires an additional script
   """
   read_id=\$(basename ${reads} | sed 's/\\.fastq\\(\\.gz\\)\\?\$//')
   chmod +x "$script"
