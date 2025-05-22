@@ -11,11 +11,11 @@ autocycler_pipeline/
 │   ├── genome_size_raven.sh
 │   ├── miniasm.sh
 │   └── raven.sh
-├── long_reads/               # Input long-reads
-│   ├── sample1.fastq.gz
-│   ├── sample2.fastq.gz
-│   └── ...
-└── results/             # (Optional) empty; Nextflow writes outputs here or under params.outdir
+└── long_reads/               # Input long-reads
+    ├── sample1.fastq.gz
+    ├── sample2.fastq.gz
+    └── ...
+
 ```
 
 **Running the pipeline**
