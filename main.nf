@@ -134,7 +134,7 @@ process autocycler_assemble {
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "assemblies/*.fasta"
+  publishDir "${params.outdir}/${sample_id}/assemblies", mode: 'copy', pattern: "*.fasta"
 
   input:
     tuple val(sample_id), path(reads), val(asm), path(script), val(threads), path(gsize)
