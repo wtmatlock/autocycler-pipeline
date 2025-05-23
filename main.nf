@@ -53,8 +53,9 @@ Channel
     }
 
   assembly_tasks.view()
-  assembled_ch = autocycler_assemble(assembly_tasks)
-  assembled_ch.view()
+
+  //assembled_ch = autocycler_assemble(assembly_tasks)
+  //assembled_ch.view()
 
   // Step 6: Compress assembled contigs into unitig graphs
   // Group assemblies by sample_id
@@ -95,7 +96,7 @@ process genome_size {
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}/genome_size", mode: 'copy', pattern: "${sample_id}.gsize.txt"
+  publishDir "${params.outdir}/${sample_id}/genome_size_estimate", mode: 'copy', pattern: "${sample_id}.gsize.txt"
 
   input:
     tuple val(sample_id), path(long_reads), val(threads), path(script)
@@ -119,7 +120,7 @@ process qc_longreads {
     
     memory '32GB'
 
-    publishDir "${params.outdir}/${sample_id}/qced_reads", mode: 'copy', pattern: "${sample_id}_qc.fastq"
+    publishDir "${params.outdir}/${sample_id}/qced_longreads", mode: 'copy', pattern: "${sample_id}_qc.fastq"
 
     input:
        tuple val(sample_id), path(long_reads), val(threads)
@@ -142,7 +143,7 @@ process autocycler_subsample {
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "subsampled_reads/*.fastq"
+  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "subsampled_longreads/*.fastq"
 
   input:
     tuple val(sample_id), path(fastq), path(gsize)
