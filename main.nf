@@ -31,8 +31,6 @@ Channel
   subsample_inputs = qc_longreads_ch
     .join(genome_size_ch.map{ sample_id, orig_reads, gsize -> tuple(sample_id, gsize) })
     .map { sample_id, qc_reads, gsize -> tuple(sample_id, qc_reads, gsize) }
-
-  subsample_inputs.view()
   
   subsampled_reads_ch = autocycler_subsample(subsample_inputs)
 
@@ -52,14 +50,18 @@ Channel
       }
     }
 
-  assembly_tasks.view()
-
-  //assembled_ch = autocycler_assemble(assembly_tasks)
-  //assembled_ch.view()
+  assembled_ch = autocycler_assemble(assembly_tasks)
+  assembled_ch.view()
 
   // Step 6: Compress assembled contigs into unitig graphs
-  // Group assemblies by sample_id
-  //assembled_grouped = assembled_ch.groupTuple(by: 0)
+
+  // Group all assembly FASTAs by sample_id
+  assemblies_grouped = assembled_ch
+    .groupTuple(by: 0)
+    .map { sample_id, fasta_files -> tuple(sample_id, file("${params.outdir}/${sample_id}/assemblies")) }
+
+  assemblies_grouped.view()
+
   //compressed_ch = autocycler_compress(assembled_grouped)
 
   // Step 7: Cluster unitigs per sample
@@ -149,17 +151,17 @@ process autocycler_subsample {
     tuple val(sample_id), path(fastq), path(gsize)
 
   output:
-    tuple val(sample_id), path("subsampled_reads/*.fastq"), path(gsize)
+    tuple val(sample_id), path("subsampled_longreads/*.fastq"), path(gsize)
 
   script:
   // Subsample reads using the genome size
   """
-  mkdir -p subsampled_reads
+  mkdir -p subsampled_longreads
   autocycler subsample \
     --reads "$fastq" \
-    --out_dir subsampled_reads \
+    --out_dir subsampled_longreads \
     --genome_size \$(head -n1 "$gsize")
-  echo -e "${sample_id}\tsubsampled_reads/${sample_id}\t$gsize"
+  echo -e "${sample_id}\tsubsampled_longreads/${sample_id}\t$gsize"
   """
 }
 
@@ -194,25 +196,28 @@ process autocycler_assemble {
 }
 
 process autocycler_compress {
-  
-  container 'wtmatlock/autocycler-suite'
 
   tag "compress:${sample_id}"
+  
+  container 'wtmatlock/autocycler-suite:linux_amd64'
+
+  memory '32 GB'
+
+  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "autocycler_output/*"
 
   input:
-    tuple val(sample_id), path(asm_dirs)
+    tuple val(sample_id), path(assemblies_dir)
 
   output:
-    tuple val(sample_id), path("${params.outdir}/${sample_id}")
+    val(sample_id)
 
   script:
   // Merge assembled contigs into a unitig graph
   """
-  mkdir -p ${params.outdir}/${sample_id}
   autocycler compress \
-    -i ${asm_dirs.join(' ')} \
-    -a ${params.outdir}/${sample_id}
-  echo -e "${sample_id}\t${params.outdir}/${sample_id}"
+    -i ${assemblies_dir} \
+    -a ${params.outdir}/${sample_id}/autocycler_output \
+    -t ${params.threads}
   """
 }
 
