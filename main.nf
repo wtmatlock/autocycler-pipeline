@@ -30,7 +30,7 @@ Channel
 
   // Step 4: Assemble each subsample with each assembler script in /bin
   // assemblers = ['canu','flye','miniasm','raven']
-  assemblers = ['flye','raven']
+  assemblers = ['flye', 'miniasm', 'raven']
 
   assembly_tasks = subsampled_reads_ch
     .flatMap { sample_id, fastq_files, gsize ->
