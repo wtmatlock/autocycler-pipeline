@@ -232,7 +232,7 @@ process autocycler_cluster {
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}/autocycler_outputs", mode: 'copy', pattern: "**", overwrite: true
+  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "**", overwrite: true
 
   input:
     tuple val(sample_id), path(autocycler_dir)
