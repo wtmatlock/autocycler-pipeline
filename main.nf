@@ -51,7 +51,6 @@ Channel
     }
 
   assembled_ch = autocycler_assemble(assembly_tasks)
-  assembled_ch.view()
 
   // Step 6: Compress assembled contigs into unitig graphs
 
@@ -60,12 +59,16 @@ Channel
     .groupTuple(by: 0)
     .map { sample_id, fasta_files -> tuple(sample_id, file("${params.outdir}/${sample_id}/assemblies")) }
 
-  assemblies_grouped.view()
-
-  //compressed_ch = autocycler_compress(assembled_grouped)
+  compressed_ch = autocycler_compress(assemblies_grouped)
 
   // Step 7: Cluster unitigs per sample
-  //clustered_ch = autocycler_cluster(compressed_ch)
+
+  cluster_inputs = compressed_ch.map { sample_id, autocycler_dir  ->
+    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
+    }
+
+  cluster_inputs.view()
+  clustered_ch = autocycler_cluster(cluster_inputs)
 
   // Step 8: Trim and resolve clusters in series
   //trimmed_ch = autocycler_trim(
@@ -203,41 +206,44 @@ process autocycler_compress {
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "autocycler_output/*"
+  publishDir "${params.outdir}/${sample_id}/autocycler_outputs", mode: 'copy', pattern: "**"
 
   input:
     tuple val(sample_id), path(assemblies_dir)
 
   output:
-    val(sample_id)
+    tuple val(sample_id), path("**")
 
   script:
   // Merge assembled contigs into a unitig graph
   """
   autocycler compress \
     -i ${assemblies_dir} \
-    -a ${params.outdir}/${sample_id}/autocycler_output \
+    -a . \
     -t ${params.threads}
   """
 }
 
 process autocycler_cluster {
 
-  container 'wtmatlock/autocycler-suite'
-
   tag "cluster:${sample_id}"
+  
+  container 'wtmatlock/autocycler-suite:linux_amd64'
+
+  memory '32 GB'
+
+  publishDir "${params.outdir}/${sample_id}/autocycler_outputs", mode: 'copy', pattern: "**", overwrite: true
 
   input:
-    tuple val(sample_id), path(params.outdir)
+    tuple val(sample_id), path(autocycler_dir)
 
   output:
-    tuple val(sample_id), path(params.outdir + '/clustering/qc_pass/cluster_*')
+    tuple val(sample_id), path("**")
 
   script:
   // Group unitigs into putative chromosomes/plasmids
   """
-  autocycler cluster -a ${params.outdir}
-  echo -n "${sample_id}"
+  autocycler cluster -a ${autocycler_dir}
   """
 }
 
