@@ -15,7 +15,7 @@
 │   ├── sample1.fastq.gz
 │   ├── sample2.fastq.gz
 │   └── ...
-├── short_reads/               # Input short-reads
+├── short_reads/              # Input short-reads
 │   ├── sample1_1.fastq.gz
 │   ├── sample1_2.fastq.gz
 │   ├── sample2_1.fastq.gz
