@@ -90,9 +90,14 @@ Channel
     tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
   }
 
-  combined_inputs.view()
-
   combined_ch = autocycler_combine(combined_inputs)
+
+  // Step 10: Reorient the final assembly using dnaapler
+  reorient_inputs = combined_inputs.map { sample_id, autocycler_dir  ->
+    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
+  }
+
+  //reorient_ch = reorient_assembly(reorient_inputs)
 
 }
 
@@ -322,6 +327,31 @@ process autocycler_combine {
   // Merge all resolved graphs into one final assembly per sample
   """
   autocycler combine -a ${autocycler_dir} -i ${autocycler_dir}/clustering/qc_pass/cluster_*/5_final.gfa
+  """
+}
+
+process reorient_assembly {
+
+  tag "reorient:${sample_id}"
+  
+  container 'quay.io/biocontainers/dnaapler:1.2.0--pyhdfd78af_0'
+
+  memory '32 GB'
+
+  publishDir "${params.outdir}/${sample_id}/reoriented_assembly", mode: 'copy', pattern: "*.fasta"
+
+  input:
+    tuple val(sample_id), path(autocycler_dir)
+
+  output:
+    tuple val(sample_id), path("*.fasta")
+
+  script:
+  // Reorient the final assembly using dnaapler
+  """
+  dnaapler all -i ${autocycler_dir}/consensus_assembly.fasta \\
+   -o reoriented_assembly \\
+   -p "${sample_id}"
   """
 }
 
