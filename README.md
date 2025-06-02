@@ -15,7 +15,7 @@ autocycler_pipeline/
 │   ├── sample1.fastq.gz
 │   ├── sample2.fastq.gz
 │   └── ...
-└── autocycler_out/           # Output directories are created
+└── outputs/                  # Output directories are created
     ├── sample1/
     ├── sample2/
     └── ...
