@@ -67,27 +67,32 @@ Channel
     tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
     }
 
-  cluster_inputs.view()
   clustered_ch = autocycler_cluster(cluster_inputs)
 
-  // Step 8: Trim and resolve clusters in series
-  //trimmed_ch = autocycler_trim(
-  //  clustered_ch.flatMap { sample_id, clusters ->
-  //  clusters.collect { cluster_dir -> tuple(sample_id, cluster_dir) }
-  //  }
-  //  )
+  // Step 8: Trim clusters in series
 
+  trimmed_inputs = clustered_ch.map { sample_id, autocycler_dir  ->
+    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
+  }
+  
+  trimmed_ch = autocycler_trim(trimmed_inputs)
 
-  //resolved_ch = autocycler_resolve(trimmed_ch)
+  // Step 8: Resolve clusters in series
 
+  resolved_inputs = trimmed_ch.map { sample_id, autocycler_dir  ->
+    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
+  }
+
+  resolved_ch = autocycler_resolve(resolved_inputs)
 
   // Step 9: Combine final GFA graphs per sample
-  // Group resolved graphs by sample_id
-  // combined = resolved_ch.groupBy { it[0] }
-  // combined.subscribe { sample_id, records ->
-  // def gfas = records.collect { it[2] }
-  // autocycler_combine(sample_id, gfas)
-  // }
+  combined_inputs = resolved_ch.map { sample_id, autocycler_dir  ->
+    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
+  }
+
+  combined_inputs.view()
+
+  combined_ch = autocycler_combine(combined_inputs)
 
 }
 
@@ -249,62 +254,74 @@ process autocycler_cluster {
 
 process autocycler_trim {
 
-  container 'wtmatlock/autocycler-suite'
-
   tag "trim:${sample_id}"
+  
+  container 'wtmatlock/autocycler-suite:linux_amd64'
+
+  memory '32 GB'
+
+  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "**", overwrite: true
 
   input:
-    tuple val(sample_id), path(params.outdir)
+    tuple val(sample_id), path(autocycler_dir)
 
   output:
-    tuple val(sample_id), path(params.outdir)
+    tuple val(sample_id), path("**")
 
   script:
   // Remove low-quality tips from each cluster graph
   """
-  autocycler trim -c ${params.outdir}
-  echo -e "${sample_id}\t${params.outdir}"
+  for c in ${autocycler_dir}/clustering/qc_pass/cluster_*; do
+    autocycler trim -c "\$c"
+  done
   """
 }
 
 process autocycler_resolve {
 
-  container 'wtmatlock/autocycler-suite'
-
   tag "resolve:${sample_id}"
+  
+  container 'wtmatlock/autocycler-suite:linux_amd64'
+
+  memory '32 GB'
+
+  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "**", overwrite: true
 
   input:
-    tuple val(sample_id), path(params.outdir)
+    tuple val(sample_id), path(autocycler_dir)
 
   output:
-    tuple val(sample_id), path(params.outdir + '/5_final.gfa')
+    tuple val(sample_id), path("**")
 
   script:
-  // Resolve repeats and bubbles to finalize each graph
+  // Resolve repeats and ambiguities for each cluster graph
   """
-  autocycler resolve -c ${params.outdir}
-  echo -e "${sample_id}\t${params.outdir}/5_final.gfa"
+  for c in ${autocycler_dir}/clustering/qc_pass/cluster_*; do
+    autocycler resolve -c "\$c"
+  done
   """
 }
 
 process autocycler_combine {
 
-  container 'wtmatlock/autocycler-suite'
+  tag "resolve:${sample_id}"
+  
+  container 'wtmatlock/autocycler-suite:linux_amd64'
 
-  tag "combine:${sample_id}"
+  memory '32 GB'
+
+  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "**", overwrite: true
 
   input:
-    tuple val(sample_id), path(final_gfas)
+    tuple val(sample_id), path(autocycler_dir)
 
   output:
-    path("${params.outdir}/${sample_id}/final_assembly.gfa")
+    tuple val(sample_id), path("**")
 
   script:
   // Merge all resolved graphs into one final assembly per sample
   """
-  autocycler combine \
-    -a ${params.outdir}/${sample_id} \
-    -i ${final_gfas.join(' ')}
+  autocycler combine -a ${autocycler_dir} -i ${autocycler_dir}/clustering/qc_pass/cluster_*/5_final.gfa
   """
 }
 
