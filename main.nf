@@ -92,10 +92,19 @@ Channel
 
   combined_ch = autocycler_combine(combined_inputs)
 
-  // Step 10: Reorient the final assembly using dnaapler
-  reorient_inputs = combined_inputs.map { sample_id, autocycler_dir  ->
-    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
-  }
+  // TO DO
+  // Short-read QC with fastp
+  // Short-read polish with polypolish
+  // Reorient final assembly with dnaapler
+
+  // Step 10: Perform quality control on short-reads
+
+  // Step 11: Polish assemblie with short-reads
+
+  // Step 12: Reorient the final assembly
+  //reorient_inputs = combined_inputs.map { sample_id, autocycler_dir  ->
+  //  tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
+  //}
 
   //reorient_ch = reorient_assembly(reorient_inputs)
 
