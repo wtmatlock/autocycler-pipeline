@@ -1,367 +1,368 @@
-nextflow.enable.dsl=2
+nextflow.enable.dsl = 2
 
 // Workflow
-
 workflow {
 
-  // Step 1: Import all FASTQ files as samples
-Channel
-  .fromPath(params.reads_glob)
-  .map { file ->
-    def sample_id = file.getBaseName().replaceFirst(/\.fastq(\.gz)?$/, '')
-    tuple(sample_id, file)
-  }
-  .set { samples }
+  // Step 1: Import all long-read FASTQ files as samples
+  Channel.fromPath(params.longReadsGlob)
+    .map { file ->
+      def sampleId = file.baseName.replaceFirst(/\.fastq(\.gz)?$/, '')
+      tuple(sampleId, file)
+    }
+    .set { longReadSamples }
 
-  // Step 2: For each sample, compute genome size via Raven helper script
-  samples
-    .map { sample_id, fastq -> tuple(sample_id, fastq, params.threads, file('bin/genome_size_raven.sh')) }
-    .set { genome_inputs }
+  // Step 2: Perform quality control on long-reads
+  qcLongReadsChannel = QC_LONGREADS(longReadSamples)
 
-  genome_size_ch = genome_size(genome_inputs)
+  // Step 3: For each sample, estimate genome size via Raven helper script
+  qcLongReadsChannel
+    .map { sampleId, fastq -> tuple(sampleId, fastq, file('bin/genome_size_raven.sh')) }
+    .set { genomeSizeInputs }
 
-  // Step 3: Perform quality control on long-reads
-  qc_longreads_ch = samples
-    .map { sample_id, fastq -> tuple(sample_id, fastq, params.threads) }
-    .set { qc_inputs }
-
-  qc_longreads_ch = qc_longreads(qc_inputs)
+  genomeSizeChannel = GENOME_SIZE_ESTIMATE(genomeSizeInputs)
 
   // Step 4: Subsample reads for each sample
-  subsample_inputs = qc_longreads_ch
-    .join(genome_size_ch.map{ sample_id, orig_reads, gsize -> tuple(sample_id, gsize) })
-    .map { sample_id, qc_reads, gsize -> tuple(sample_id, qc_reads, gsize) }
-  
-  subsampled_reads_ch = autocycler_subsample(subsample_inputs)
+  subsampleInputs = qcLongReadsChannel
+    .join(genomeSizeChannel.map { sampleId, _originalReads, genomeSize -> tuple(sampleId, genomeSize) })
+    .map { sampleId, qcReads, genomeSize -> tuple(sampleId, qcReads, genomeSize) }
+
+  subsampledReadsChannel = AUTOCYCLER_SUBSAMPLE(subsampleInputs)
 
   // Step 5: Assemble each subsample with each assembler script in /bin
 
-  // NB canu takes a lot longer than the other assemblers, so only run when everything else is debugged
+  // Note: canu takes a lot longer than the other assemblers, so only run when everything else is debugged
   // assemblers = ['canu', 'flye', 'miniasm', 'raven']
-
   assemblers = ['flye', 'miniasm', 'raven']
 
-  assembly_tasks = subsampled_reads_ch
-    .flatMap { sample_id, fastq_files, gsize ->
-      fastq_files.collectMany { fastq_file ->
-        assemblers.collect { asm ->
-          tuple(sample_id, fastq_file, gsize, params.threads, asm, file("bin/${asm}.sh"), file("bin/canu_trim.py"))
-        }
+  assemblyInputs = subsampledReadsChannel.flatMap { sampleId, subsampledReads, genomeSize ->
+    subsampledReads.collectMany { subsampledRead ->
+      def subsampleReadId = subsampledRead.baseName.replaceFirst(/\.fastq$/, '')
+      assemblers.collect { assembler ->
+        tuple(
+          sampleId,
+          subsampledRead,
+          subsampleReadId,
+          genomeSize,
+          assembler,
+          file("bin/${assembler}.sh"),
+          file('bin/canu_trim.py'),
+        )
       }
     }
+  }
 
-  assembled_ch = autocycler_assemble(assembly_tasks)
+  assembledChannel = AUTOCYCLER_ASSEMBLY(assemblyInputs)
 
   // Step 6: Compress assembled contigs into unitig graphs
-
-  // Group all assembly FASTAs by sample_id
-  assemblies_grouped = assembled_ch
+  compressInputs = assembledChannel
     .groupTuple(by: 0)
-    .map { sample_id, fasta_files -> tuple(sample_id, file("${params.outdir}/${sample_id}/assemblies")) }
+    .map { sampleId, _qcReads -> tuple(sampleId, file("${params.outdir}/${sampleId}/assemblies")) }
 
-  compressed_ch = autocycler_compress(assemblies_grouped)
+  compressedChannel = AUTOCYCLER_COMPRESS(compressInputs)
 
   // Step 7: Cluster unitigs per sample
+  clusterInputs = compressedChannel.map { sampleId, _autocycler_dir ->
+    tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
+  }
 
-  cluster_inputs = compressed_ch.map { sample_id, autocycler_dir  ->
-    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
-    }
-
-  clustered_ch = autocycler_cluster(cluster_inputs)
+  clusteredChannel = AUTOCYCLER_CLUSTER(clusterInputs)
 
   // Step 8: Trim clusters in series
-
-  trimmed_inputs = clustered_ch.map { sample_id, autocycler_dir  ->
-    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
-  }
-  
-  trimmed_ch = autocycler_trim(trimmed_inputs)
-
-  // Step 8: Resolve clusters in series
-
-  resolved_inputs = trimmed_ch.map { sample_id, autocycler_dir  ->
-    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
+  trimInputs = clusteredChannel.map { sampleId, _autocycler_dir ->
+    tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
   }
 
-  resolved_ch = autocycler_resolve(resolved_inputs)
+  trimmedChannel = AUTOCYCLER_TRIM(trimInputs)
 
-  // Step 9: Combine final GFA graphs per sample
-  combined_inputs = resolved_ch.map { sample_id, autocycler_dir  ->
-    tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
+  // Step 9: Resolve clusters in series
+  resolveInputs = trimmedChannel.map { sampleId, _autocycler_dir ->
+    tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
   }
 
-  combined_ch = autocycler_combine(combined_inputs)
+  resolvedChannel = AUTOCYCLER_RESOLVE(resolveInputs)
 
-  // TO DO
-  // Short-read QC with fastp
-  // Short-read polish with polypolish
-  // Reorient final assembly with dnaapler
+  // Step 10: Combine final GFA graphs per sample
+  combineInputs = resolvedChannel.map { sampleId, _autocycler_dir ->
+    tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
+  }
 
-  // Step 10: Perform quality control on short-reads
+  // NB underscore
+  _combinedChannel = AUTOCYCLER_COMBINE(combineInputs)
 
-  // Step 11: Polish assemblie with short-reads
+  if (params.runShortReads) {
 
-  // Step 12: Reorient the final assembly
-  //reorient_inputs = combined_inputs.map { sample_id, autocycler_dir  ->
-  //  tuple(sample_id, file("${params.outdir}/${sample_id}/autocycler_outputs"))
-  //}
+    Channel.fromFilePairs(params.shortReadsGlob, flat: true)
+      .map { sampleId, pair -> tuple(sampleId, pair[0], pair[1]) }
+      .set { shortReadSamples }
 
-  //reorient_ch = reorient_assembly(reorient_inputs)
+    shortReadSamples.view()
+  }
+  else {
 
+    log.info("Short-read processing is disabled (params.runShortReads = false)")
+  }
 }
 
 // Processes
 
-process genome_size {
+process QC_LONGREADS {
+  tag "QC_LONGREADS:${sampleId}"
 
-  tag "genome_size:${sample_id}"
+  container 'quay.io/biocontainers/filtlong:0.2.1--hdcf5f25_4'
+
+  memory '32GB'
+
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/qced_longreads", mode: 'copy', pattern: "${sampleId}_qc.fastq"
+
+  input:
+  tuple val(sampleId), path(rawLongReads)
+
+  output:
+  tuple val(sampleId), path("${sampleId}_qc.fastq")
+
+  script:
+  // Perform quality control on long-reads using Filtlong
+  """
+  filtlong --min_length 1000 --keep_percent 95 ${rawLongReads} > ${sampleId}_qc.fastq
+  """
+}
+
+process GENOME_SIZE_ESTIMATE {
+  tag "GENOME_SIZE_ESTIMATE:${sampleId}"
 
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}/genome_size_estimate", mode: 'copy', pattern: "${sample_id}.gsize.txt"
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/genome_size_estimate", mode: 'copy', pattern: "${sampleId}_genome_size.txt"
 
   input:
-    tuple val(sample_id), path(long_reads), val(threads), path(script)
+  tuple val(sampleId), path(qcLongReads), path(script)
 
   output:
-    tuple val(sample_id), path(long_reads), path("${sample_id}.gsize.txt")
+  tuple val(sampleId), path(qcLongReads), path("${sampleId}_genome_size.txt")
 
-script:
-// Compute genome size using Raven helper script (skipping polishing step)
-"""
-chmod +x "$script"
-"$script" "$long_reads" "$threads" > ${sample_id}.gsize.txt
-"""
+  script:
+  // Compute genome size using Raven helper script (skipping polishing step)
+  """
+  chmod +x "${script}"
+  "${script}" "${qcLongReads}" "${params.threads}" > ${sampleId}_genome_size.txt
+  """
 }
 
-process qc_longreads {
-
-    tag "qc_longreads:${sample_id}"
-
-    container 'quay.io/biocontainers/filtlong:0.2.1--hdcf5f25_4'
-    
-    memory '32GB'
-
-    publishDir "${params.outdir}/${sample_id}/qced_longreads", mode: 'copy', pattern: "${sample_id}_qc.fastq"
-
-    input:
-       tuple val(sample_id), path(long_reads), val(threads)
-
-    output:
-    tuple val(sample_id), path("${sample_id}_qc.fastq")
-
-    script:
-    // Perform quality control on long-reads using Filtlong
-    """
-    filtlong --min_length 1000 --keep_percent 95 $long_reads > ${sample_id}_qc.fastq      
-    """
-}
-
-process autocycler_subsample {
-
-  tag "subsample:${sample_id}"
+process AUTOCYCLER_SUBSAMPLE {
+  tag "AUTOCYCLER_SUBSAMPLE:${sampleId}"
 
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "subsampled_longreads/*.fastq"
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: 'subsampled_longreads/*.fastq'
 
   input:
-    tuple val(sample_id), path(fastq), path(gsize)
+  tuple val(sampleId), path(qcLongReads), path(genomeSize)
 
   output:
-    tuple val(sample_id), path("subsampled_longreads/*.fastq"), path(gsize)
+  tuple val(sampleId), path('subsampled_longreads/*.fastq'), path(genomeSize)
 
   script:
   // Subsample reads using the genome size
   """
   mkdir -p subsampled_longreads
   autocycler subsample \
-    --reads "$fastq" \
+    --reads "${qcLongReads}" \
     --out_dir subsampled_longreads \
-    --genome_size \$(head -n1 "$gsize")
-  echo -e "${sample_id}\tsubsampled_longreads/${sample_id}\t$gsize"
+    --genome_size \$(head -n1 "${genomeSize}")
+  echo -e "${sampleId}\tsubsampled_longreads/${sampleId}\t${genomeSize}"
   """
 }
 
-process autocycler_assemble {
-
-  tag {"assemble:${sample_id}:${asm}"}
+process AUTOCYCLER_ASSEMBLY {
+  tag { "AUTOCYCLER_ASSEMBLY:${sampleId}:${assembler}:${subsampleId}" }
 
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}/assemblies", mode: 'copy', pattern: "*.fasta"
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/assemblies", mode: 'copy', pattern: '*.fasta'
 
   input:
-    tuple val(sample_id), path(reads), path(gsize), val(threads), val(asm), path(script), path(canu_trim)
+  tuple val(sampleId), path(subsampledLongReads), val(subsampleId), path(genomeSize), val(assembler), path(script), path(canuTrim)
 
   output:
-    tuple val(sample_id), path("*.fasta")
-  
+  tuple val(sampleId), path('*.fasta')
+
   script:
   // Assemble reads using the specified assembler script
   // Canu requires an additional script
   """
-  read_id=\$(basename ${reads} | sed 's/\\.fastq\\(\\.gz\\)\\?\$//')
-  chmod +x "$script"
-  "$script" \\
-    ${reads} \\
-    "${sample_id}_${asm}_\${read_id}" \\
-    "$threads" \\
-    \$(head -n1 "$gsize")
+  chmod +x "${script}"
+  chmod +x "${canuTrim}"
+  "${script}" \\
+    ${subsampledLongReads} \\
+    "${sampleId}_${assembler}_${subsampleId}" \\
+    "${params.threads}" \\
+    \$(head -n1 "${genomeSize}")
   """
 }
 
-process autocycler_compress {
+process AUTOCYCLER_COMPRESS {
+  tag "AUTOCYCLER_COMPRESS:${sampleId}"
 
-  tag "compress:${sample_id}"
-  
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}/autocycler_outputs", mode: 'copy', pattern: "**"
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/autocycler_outputs", mode: 'copy', pattern: '**'
 
   input:
-    tuple val(sample_id), path(assemblies_dir)
+  tuple val(sampleId), path(assembliesDir)
 
   output:
-    tuple val(sample_id), path("**")
+  tuple val(sampleId), path('**')
 
   script:
   // Merge assembled contigs into a unitig graph
   """
   autocycler compress \
-    -i ${assemblies_dir} \
+    -i ${assembliesDir} \
     -a . \
     -t ${params.threads}
   """
 }
 
-process autocycler_cluster {
+process AUTOCYCLER_CLUSTER {
+  tag "AUTOCYCLER_CLUSTER:${sampleId}"
 
-  tag "cluster:${sample_id}"
-  
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "**", overwrite: true
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: '**', overwrite: true
 
   input:
-    tuple val(sample_id), path(autocycler_dir)
+  tuple val(sampleId), path(autocyclerDir)
 
   output:
-    tuple val(sample_id), path("**")
+  tuple val(sampleId), path('**')
 
   script:
   // Group unitigs into putative chromosomes/plasmids
   """
-  autocycler cluster -a ${autocycler_dir}
+  autocycler cluster -a ${autocyclerDir}
   """
 }
 
-process autocycler_trim {
+process AUTOCYCLER_TRIM {
+  tag "AUTOCYCLER_TRIM:${sampleId}"
 
-  tag "trim:${sample_id}"
-  
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "**", overwrite: true
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: '**', overwrite: true
 
   input:
-    tuple val(sample_id), path(autocycler_dir)
+  tuple val(sampleId), path(autocyclerDir)
 
   output:
-    tuple val(sample_id), path("**")
+  tuple val(sampleId), path('**')
 
   script:
   // Remove low-quality tips from each cluster graph
   """
-  for c in ${autocycler_dir}/clustering/qc_pass/cluster_*; do
+  for c in ${autocyclerDir}/clustering/qc_pass/cluster_*; do
     autocycler trim -c "\$c"
   done
   """
 }
 
-process autocycler_resolve {
+process AUTOCYCLER_RESOLVE {
+  tag "AUTOCYCLER_RESOLVE:${sampleId}"
 
-  tag "resolve:${sample_id}"
-  
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "**", overwrite: true
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: '**', overwrite: true
 
   input:
-    tuple val(sample_id), path(autocycler_dir)
+  tuple val(sampleId), path(autocyclerDir)
 
   output:
-    tuple val(sample_id), path("**")
+  tuple val(sampleId), path('**')
 
   script:
   // Resolve repeats and ambiguities for each cluster graph
   """
-  for c in ${autocycler_dir}/clustering/qc_pass/cluster_*; do
+  for c in ${autocyclerDir}/clustering/qc_pass/cluster_*; do
     autocycler resolve -c "\$c"
   done
   """
 }
 
-process autocycler_combine {
+process AUTOCYCLER_COMBINE {
+  tag "AUTOCYCLER_COMBINE:${sampleId}"
 
-  tag "resolve:${sample_id}"
-  
   container 'wtmatlock/autocycler-suite:linux_amd64'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}", mode: 'copy', pattern: "**", overwrite: true
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: '**', overwrite: true
 
   input:
-    tuple val(sample_id), path(autocycler_dir)
+  tuple val(sampleId), path(autocyclerDir)
 
   output:
-    tuple val(sample_id), path("**")
+  tuple val(sampleId), path('**')
 
   script:
   // Merge all resolved graphs into one final assembly per sample
   """
-  autocycler combine -a ${autocycler_dir} -i ${autocycler_dir}/clustering/qc_pass/cluster_*/5_final.gfa
+  autocycler combine -a ${autocyclerDir} -i ${autocyclerDir}/clustering/qc_pass/cluster_*/5_final.gfa
   """
 }
 
-process reorient_assembly {
+process REORIENT_ASSEMBLY {
+  tag "REORIENT_ASSEMBLY:${sampleId}"
 
-  tag "reorient:${sample_id}"
-  
   container 'quay.io/biocontainers/dnaapler:1.2.0--pyhdfd78af_0'
 
   memory '32 GB'
 
-  publishDir "${params.outdir}/${sample_id}/reoriented_assembly", mode: 'copy', pattern: "*.fasta"
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/reoriented_assembly", mode: 'copy', pattern: '*.fasta'
 
   input:
-    tuple val(sample_id), path(autocycler_dir)
+  tuple val(sampleId), path(autocyclerDir)
 
   output:
-    tuple val(sample_id), path("*.fasta")
+  tuple val(sampleId), path('*.fasta')
 
   script:
   // Reorient the final assembly using dnaapler
   """
-  dnaapler all -i ${autocycler_dir}/consensus_assembly.fasta \\
+  dnaapler all -i ${autocyclerDir}/consensus_assembly.fasta \\
    -o reoriented_assembly \\
-   -p "${sample_id}"
+   -p "${sampleId}"
   """
 }
-
-
