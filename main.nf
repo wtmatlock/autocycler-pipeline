@@ -87,8 +87,7 @@ workflow {
     tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
   }
 
-  // NB underscore
-  _combinedChannel = AUTOCYCLER_COMBINE(combineInputs)
+  combinedChannel = AUTOCYCLER_COMBINE(combineInputs)
 
   // Optional step: QC short-reads and polish final assembly
   if (params.runShortReads) {
@@ -100,31 +99,28 @@ workflow {
     qcShortReadsChannel = QC_SHORTREADS(shortReadSamples)
 
     // Index the combined assembly
-    indexInputs = qcShortReadsChannel
-      .map { sampleId, qc1, qc2 ->
-        def assembly = file("${params.outdir}/${sampleId}/autocycler_outputs/consensus_assembly.fasta")
-        tuple(sampleId, assembly, qc1, qc2)
-      }
+      indexInputs = qcShortReadsChannel
+        .join(combinedChannel, by: 0)
+        .map { sampleId, qc1, qc2, assembly -> 
+            tuple(sampleId, assembly, qc1, qc2)
+        }
 
     indexedAssemblyChannel = INDEX_ASSEMBLY(indexInputs)
 
     // Polish the combined assembly using short-reads
-    polishInputs = indexedAssemblyChannel
-      .map { sampleId, assembly, aln1, aln2 ->
-        tuple(sampleId, assembly, aln1, aln2)
-      }
+    polishInputs = indexedAssemblyChannel.map { sampleId, assembly, aln1, aln2 ->
+      tuple(sampleId, assembly, aln1, aln2)
+    }
 
     polishedAssemblyChannel = POLISH_ASSEMBLY(polishInputs)
 
     // Step 11: Reorient the final assembly using dnaapler
     _reorientedAssemblyChannel = REORIENT_ASSEMBLY(polishedAssemblyChannel)
-
   }
   else {
-    log.info("Short-read processing is disabled (params.runShortReads = false)")
 
     // Step 11: Reorient the final assembly using dnaapler
-    // TBD
+    _reorientedAssemblyChannel = REORIENT_ASSEMBLY(combinedChannel)
   }
 }
 
@@ -357,7 +353,7 @@ process AUTOCYCLER_COMBINE {
   tuple val(sampleId), path(autocyclerDir)
 
   output:
-  tuple val(sampleId), path('**')
+  tuple val(sampleId), path("${autocyclerDir}/consensus_assembly.fasta")
 
   script:
   // Merge all resolved graphs into one final assembly per sample
@@ -458,25 +454,26 @@ process POLISH_ASSEMBLY {
 process REORIENT_ASSEMBLY {
   tag "REORIENT_ASSEMBLY:${sampleId}"
 
-  container 'quay.io/biocontainers/dnaapler:1.1.0--pyhdfd78af_0'
-  
+  container 'wtmatlock/dnaapler:linux_amd64'
+
   memory '32 GB'
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/reoriented_assembly", mode: 'copy', pattern: '*.fasta'
+  publishDir "${params.outdir}/${sampleId}/reoriented_assembly", mode: 'copy', pattern: 'dnaapler_output/*.fasta'
 
   input:
   tuple val(sampleId), path(assembly)
 
   output:
-  tuple val(sampleId), path('*.fasta')
+  tuple val(sampleId), path('dnaapler_output/*.fasta')
 
   script:
   // Reorient the final assembly using dnaapler
   """
   dnaapler all -i ${assembly} \\
-   -o reoriented_assembly \\
+   -o dnaapler_output \\
+   -t ${params.threads} \\
    -p "${sampleId}"
   """
 }
