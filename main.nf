@@ -32,6 +32,7 @@ workflow {
 
   // Note: canu takes a lot longer than the other assemblers, so only run when everything else is debugged
   // assemblers = ['canu', 'flye', 'miniasm', 'raven']
+
   assemblers = ['flye', 'miniasm', 'raven']
 
   assemblyInputs = subsampledReadsChannel.flatMap { sampleId, subsampledReads, genomeSize ->
@@ -89,17 +90,41 @@ workflow {
   // NB underscore
   _combinedChannel = AUTOCYCLER_COMBINE(combineInputs)
 
+  // Optional step: QC short-reads and polish final assembly
   if (params.runShortReads) {
 
     Channel.fromFilePairs(params.shortReadsGlob, flat: true)
-      .map { sampleId, pair -> tuple(sampleId, pair[0], pair[1]) }
       .set { shortReadSamples }
 
-    shortReadSamples.view()
+    // Perform quality control on short-reads
+    qcShortReadsChannel = QC_SHORTREADS(shortReadSamples)
+
+    // Index the combined assembly
+    indexInputs = qcShortReadsChannel
+      .map { sampleId, qc1, qc2 ->
+        def assembly = file("${params.outdir}/${sampleId}/autocycler_outputs/consensus_assembly.fasta")
+        tuple(sampleId, assembly, qc1, qc2)
+      }
+
+    indexedAssemblyChannel = INDEX_ASSEMBLY(indexInputs)
+
+    // Polish the combined assembly using short-reads
+    polishInputs = indexedAssemblyChannel
+      .map { sampleId, assembly, aln1, aln2 ->
+        tuple(sampleId, assembly, aln1, aln2)
+      }
+
+    polishedAssemblyChannel = POLISH_ASSEMBLY(polishInputs)
+
+    // Step 11: Reorient the final assembly using dnaapler
+    _reorientedAssemblyChannel = REORIENT_ASSEMBLY(polishedAssemblyChannel)
+
   }
   else {
-
     log.info("Short-read processing is disabled (params.runShortReads = false)")
+
+    // Step 11: Reorient the final assembly using dnaapler
+    // TBD
   }
 }
 
@@ -337,15 +362,104 @@ process AUTOCYCLER_COMBINE {
   script:
   // Merge all resolved graphs into one final assembly per sample
   """
-  autocycler combine -a ${autocyclerDir} -i ${autocyclerDir}/clustering/qc_pass/cluster_*/5_final.gfa
+  autocycler combine -a ${autocyclerDir} \
+                     -i ${autocyclerDir}/clustering/qc_pass/cluster_*/5_final.gfa
+  """
+}
+
+process QC_SHORTREADS {
+  tag "QC_SHORTREADS:${sampleId}"
+
+  container 'quay.io/biocontainers/fastp:0.24.2--heae3180_0'
+
+  memory '32GB'
+
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/qced_shortreads", mode: 'copy', pattern: "${sampleId}_qc_*.fastq.gz"
+
+  input:
+  tuple val(sampleId), path(rawShortReads1), path(rawShortReads2)
+
+  output:
+  tuple val(sampleId), path("${sampleId}_qc_1.fastq.gz"), path("${sampleId}_qc_2.fastq.gz")
+
+  script:
+  // Perform quality control on short-reads using Filtlong
+  """
+  fastp --in1 ${rawShortReads1} \
+        --in2 ${rawShortReads2}  \
+        --out1 ${sampleId}_qc_1.fastq.gz \
+        --out2 ${sampleId}_qc_2.fastq.gz
+  """
+}
+
+process INDEX_ASSEMBLY {
+  tag "INDEX_ASSEMBLY:${sampleId}"
+
+  container 'quay.io/biocontainers/bwa:0.7.19--h577a1d6_1'
+
+  memory '32GB'
+
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/indexed_assembly", mode: 'copy', pattern: '${sampleId}_alignments_*.sam'
+
+  input:
+  tuple val(sampleId), path(assembly), path(qcShortReads1), path(qcShortReads2)
+
+  output:
+  tuple val(sampleId), path(assembly), path("${sampleId}_alignments_1.sam"), path("${sampleId}_alignments_2.sam")
+
+  script:
+  // Index assembly using BWA
+  """
+  bwa index ${assembly}
+  bwa mem -t ${params.threads} \
+          -a ${assembly} ${qcShortReads1} \
+          > ${sampleId}_alignments_1.sam
+  bwa mem -t ${params.threads} \
+          -a ${assembly} ${qcShortReads2} \
+          > ${sampleId}_alignments_2.sam
+  """
+}
+
+process POLISH_ASSEMBLY {
+  tag "POLISH_ASSEMBLY:${sampleId}"
+
+  container 'quay.io/biocontainers/polypolish:0.6.0--h3ab6199_3'
+
+  memory '32GB'
+
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/polished_assembly", mode: 'copy', pattern: "${sampleId}_polished_assembly.fasta"
+
+  input:
+  tuple val(sampleId), path(assembly), path(alignments1), path(alignments2)
+
+  output:
+  tuple val(sampleId), path("${sampleId}_polished_assembly.fasta")
+
+  script:
+  // Perform quality control on short-reads using Filtlong
+  """
+  polypolish filter --in1 ${alignments1} \
+                    --in2 ${alignments2} \
+                    --out1 "${sampleId}_filtered_1.sam" \
+                    --out2 "${sampleId}_filtered_2.sam"
+  polypolish polish ${assembly} \
+                    "${sampleId}_filtered_1.sam" \
+                    "${sampleId}_filtered_2.sam" \
+                    > "${sampleId}_polished_assembly.fasta"
   """
 }
 
 process REORIENT_ASSEMBLY {
   tag "REORIENT_ASSEMBLY:${sampleId}"
 
-  container 'quay.io/biocontainers/dnaapler:1.2.0--pyhdfd78af_0'
-
+  container 'quay.io/biocontainers/dnaapler:1.1.0--pyhdfd78af_0'
+  
   memory '32 GB'
 
   cpus params.threads
@@ -353,7 +467,7 @@ process REORIENT_ASSEMBLY {
   publishDir "${params.outdir}/${sampleId}/reoriented_assembly", mode: 'copy', pattern: '*.fasta'
 
   input:
-  tuple val(sampleId), path(autocyclerDir)
+  tuple val(sampleId), path(assembly)
 
   output:
   tuple val(sampleId), path('*.fasta')
@@ -361,7 +475,7 @@ process REORIENT_ASSEMBLY {
   script:
   // Reorient the final assembly using dnaapler
   """
-  dnaapler all -i ${autocyclerDir}/consensus_assembly.fasta \\
+  dnaapler all -i ${assembly} \\
    -o reoriented_assembly \\
    -p "${sampleId}"
   """
