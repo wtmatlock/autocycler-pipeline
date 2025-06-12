@@ -26,3 +26,23 @@
     ├── sample2/
     └── ...
 ```
+
+**Usage**
+
+Clone this repository to your local machine:
+
+```
+git clone https://github.com/wtmatlock/autocycler_pipeline.git
+cd autocycler_pipeline
+```
+
+Add your input data to the appropriate directories:
+
+- Place your long-read FASTQ files in a `long_reads` directory, naming each file with its sample label (e.g. `sample1.fastq.gz`, `sample2.fastq.gz`).
+- (Optional) If you have paired-end short reads, add them to a `short_reads` directory using the convention `sample1_1.fastq.gz` and `sample1_2.fastq.gz` for each sample.
+- Before running the pipeline, review and adjust the `nextflow.config` file to set input file patterns, output directory, and resource requirements.
+
+You can then launch the pipeline with:
+```
+nextflow run main.nf
+```
