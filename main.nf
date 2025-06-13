@@ -6,7 +6,7 @@ workflow {
   // Step 1: Import all long-read FASTQ files as samples
   Channel.fromPath(params.longReadsGlob)
     .map { file ->
-      def sampleId = file.baseName.replaceFirst(/\.fastq(\.gz)?$/, '')
+      def sampleId = file.baseName.replaceFirst(/\.fastq(\.gz)?$/, "")
       tuple(sampleId, file)
     }
     .set { longReadSamples }
@@ -16,7 +16,7 @@ workflow {
 
   // Step 3: For each sample, estimate genome size via Raven helper script
   qcLongReadsChannel
-    .map { sampleId, fastq -> tuple(sampleId, fastq, file('bin/genome_size_raven.sh')) }
+    .map { sampleId, fastq -> tuple(sampleId, fastq, file("bin/genome_size_raven.sh")) }
     .set { genomeSizeInputs }
 
   genomeSizeChannel = GENOME_SIZE_ESTIMATE(genomeSizeInputs)
@@ -31,28 +31,33 @@ workflow {
   // Step 5: Assemble each subsample with each assembler script in /bin
 
   // Note: canu takes a lot longer than the other assemblers, so only run when everything else is debugged
-  // assemblers = ['canu', 'flye', 'miniasm', 'raven']
+  // assemblers = ["canu", "flye", "miniasm", "raven"]
 
-  assemblers = ['flye', 'miniasm', 'raven']
+  plassemblerDatabaseChannel = DOWNLOAD_PLASSEMBLER_DB()
+
+  assemblers = ["plassembler"] //, "flye", "miniasm", "raven"]
 
   assemblyInputs = subsampledReadsChannel.flatMap { sampleId, subsampledReads, genomeSize ->
     subsampledReads.collectMany { subsampledRead ->
-      def subsampleReadId = subsampledRead.baseName.replaceFirst(/\.fastq$/, '')
+      def subsampleReadId = subsampledRead.baseName.replaceFirst(/\.fastq$/, "")
       assemblers.collect { assembler ->
-        tuple(
+        tuple([
           sampleId,
           subsampledRead,
           subsampleReadId,
           genomeSize,
           assembler,
           file("bin/${assembler}.sh"),
-          file('bin/canu_trim.py'),
-        )
+          file("bin/canu_trim.py"),
+        ])
       }
     }
   }
 
-  assembledChannel = AUTOCYCLER_ASSEMBLY(assemblyInputs)
+  assemblyInputsWithDB = assemblyInputs
+    .combine(plassemblerDatabaseChannel)
+  
+  assembledChannel = AUTOCYCLER_ASSEMBLY(assemblyInputsWithDB)
 
   // Step 6: Compress assembled contigs into unitig graphs
   compressInputs = assembledChannel
@@ -99,11 +104,11 @@ workflow {
     qcShortReadsChannel = QC_SHORTREADS(shortReadSamples)
 
     // Index the combined assembly
-      indexInputs = qcShortReadsChannel
-        .join(combinedChannel, by: 0)
-        .map { sampleId, qc1, qc2, assembly -> 
-            tuple(sampleId, assembly, qc1, qc2)
-        }
+    indexInputs = qcShortReadsChannel
+      .join(combinedChannel, by: 0)
+      .map { sampleId, qc1, qc2, assembly ->
+        tuple(sampleId, assembly, qc1, qc2)
+      }
 
     indexedAssemblyChannel = INDEX_ASSEMBLY(indexInputs)
 
@@ -129,13 +134,13 @@ workflow {
 process QC_LONGREADS {
   tag "QC_LONGREADS:${sampleId}"
 
-  container 'quay.io/biocontainers/filtlong:0.2.1--hdcf5f25_4'
+  container "quay.io/biocontainers/filtlong:0.2.1--hdcf5f25_4"
 
-  memory '32GB'
+  memory "32GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/qced_longreads", mode: 'copy', pattern: "${sampleId}_qc.fastq"
+  publishDir "${params.outdir}/${sampleId}/qced_longreads", mode: "copy", pattern: "${sampleId}_qc.fastq"
 
   input:
   tuple val(sampleId), path(rawLongReads)
@@ -153,13 +158,13 @@ process QC_LONGREADS {
 process GENOME_SIZE_ESTIMATE {
   tag "GENOME_SIZE_ESTIMATE:${sampleId}"
 
-  container 'wtmatlock/autocycler-suite:linux_amd64'
+  container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/genome_size_estimate", mode: 'copy', pattern: "${sampleId}_genome_size.txt"
+  publishDir "${params.outdir}/${sampleId}/genome_size_estimate", mode: "copy", pattern: "${sampleId}_genome_size.txt"
 
   input:
   tuple val(sampleId), path(qcLongReads), path(script)
@@ -178,19 +183,19 @@ process GENOME_SIZE_ESTIMATE {
 process AUTOCYCLER_SUBSAMPLE {
   tag "AUTOCYCLER_SUBSAMPLE:${sampleId}"
 
-  container 'wtmatlock/autocycler-suite:linux_amd64'
+  container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: 'subsampled_longreads/*.fastq'
+  publishDir "${params.outdir}/${sampleId}", mode: "copy", pattern: "subsampled_longreads/*.fastq"
 
   input:
   tuple val(sampleId), path(qcLongReads), path(genomeSize)
 
   output:
-  tuple val(sampleId), path('subsampled_longreads/*.fastq'), path(genomeSize)
+  tuple val(sampleId), path("subsampled_longreads/*.fastq"), path(genomeSize)
 
   script:
   // Subsample reads using the genome size
@@ -204,27 +209,48 @@ process AUTOCYCLER_SUBSAMPLE {
   """
 }
 
-process AUTOCYCLER_ASSEMBLY {
-  tag { "AUTOCYCLER_ASSEMBLY:${sampleId}:${assembler}:${subsampleId}" }
+process DOWNLOAD_PLASSEMBLER_DB {
+  tag "DOWNLOAD_PLASSEMBLER_DB"
 
-  container 'wtmatlock/autocycler-suite:linux_amd64'
+  container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/assemblies", mode: 'copy', pattern: '*.fasta'
-
-  input:
-  tuple val(sampleId), path(subsampledLongReads), val(subsampleId), path(genomeSize), val(assembler), path(script), path(canuTrim)
+  publishDir "./", mode: "copy"
 
   output:
-  tuple val(sampleId), path('*.fasta')
+  path "plassembler_db"
+
+  script:
+  """
+    plassembler download -d plassembler_db
+  """
+}
+
+process AUTOCYCLER_ASSEMBLY {
+  tag { "AUTOCYCLER_ASSEMBLY:${sampleId}:${assembler}:${subsampleId}" }
+
+  container "wtmatlock/autocycler-suite:linux_amd64"
+
+  memory "32 GB"
+
+  cpus params.threads
+
+  publishDir "${params.outdir}/${sampleId}/assemblies", mode: "copy", pattern: "*.fasta"
+
+  input:
+  tuple val(sampleId), path(subsampledLongReads), val(subsampleId), path(genomeSize), val(assembler), path(script), path(canuTrim), path(plassemblerDB)
+
+  output:
+  tuple val(sampleId), path("*.fasta")
 
   script:
   // Assemble reads using the specified assembler script
-  // Canu requires an additional script
+  // Note: Canu requires an additional script and plassembler requires an additional database
   """
+  export PLASSEMBLER_DB="${plassemblerDB}"
   chmod +x "${script}"
   chmod +x "${canuTrim}"
   "${script}" \\
@@ -238,19 +264,19 @@ process AUTOCYCLER_ASSEMBLY {
 process AUTOCYCLER_COMPRESS {
   tag "AUTOCYCLER_COMPRESS:${sampleId}"
 
-  container 'wtmatlock/autocycler-suite:linux_amd64'
+  container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/autocycler_outputs", mode: 'copy', pattern: '**'
+  publishDir "${params.outdir}/${sampleId}/autocycler_outputs", mode: "copy", pattern: "**"
 
   input:
   tuple val(sampleId), path(assembliesDir)
 
   output:
-  tuple val(sampleId), path('**')
+  tuple val(sampleId), path("**")
 
   script:
   // Merge assembled contigs into a unitig graph
@@ -265,19 +291,19 @@ process AUTOCYCLER_COMPRESS {
 process AUTOCYCLER_CLUSTER {
   tag "AUTOCYCLER_CLUSTER:${sampleId}"
 
-  container 'wtmatlock/autocycler-suite:linux_amd64'
+  container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: '**', overwrite: true
+  publishDir "${params.outdir}/${sampleId}", mode: "copy", pattern: "**", overwrite: true
 
   input:
   tuple val(sampleId), path(autocyclerDir)
 
   output:
-  tuple val(sampleId), path('**')
+  tuple val(sampleId), path("**")
 
   script:
   // Group unitigs into putative chromosomes/plasmids
@@ -289,19 +315,19 @@ process AUTOCYCLER_CLUSTER {
 process AUTOCYCLER_TRIM {
   tag "AUTOCYCLER_TRIM:${sampleId}"
 
-  container 'wtmatlock/autocycler-suite:linux_amd64'
+  container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: '**', overwrite: true
+  publishDir "${params.outdir}/${sampleId}", mode: "copy", pattern: "**", overwrite: true
 
   input:
   tuple val(sampleId), path(autocyclerDir)
 
   output:
-  tuple val(sampleId), path('**')
+  tuple val(sampleId), path("**")
 
   script:
   // Remove low-quality tips from each cluster graph
@@ -315,19 +341,19 @@ process AUTOCYCLER_TRIM {
 process AUTOCYCLER_RESOLVE {
   tag "AUTOCYCLER_RESOLVE:${sampleId}"
 
-  container 'wtmatlock/autocycler-suite:linux_amd64'
+  container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: '**', overwrite: true
+  publishDir "${params.outdir}/${sampleId}", mode: "copy", pattern: "**", overwrite: true
 
   input:
   tuple val(sampleId), path(autocyclerDir)
 
   output:
-  tuple val(sampleId), path('**')
+  tuple val(sampleId), path("**")
 
   script:
   // Resolve repeats and ambiguities for each cluster graph
@@ -341,13 +367,13 @@ process AUTOCYCLER_RESOLVE {
 process AUTOCYCLER_COMBINE {
   tag "AUTOCYCLER_COMBINE:${sampleId}"
 
-  container 'wtmatlock/autocycler-suite:linux_amd64'
+  container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}", mode: 'copy', pattern: '**', overwrite: true
+  publishDir "${params.outdir}/${sampleId}", mode: "copy", pattern: "**", overwrite: true
 
   input:
   tuple val(sampleId), path(autocyclerDir)
@@ -366,13 +392,13 @@ process AUTOCYCLER_COMBINE {
 process QC_SHORTREADS {
   tag "QC_SHORTREADS:${sampleId}"
 
-  container 'quay.io/biocontainers/fastp:0.24.2--heae3180_0'
+  container "quay.io/biocontainers/fastp:0.24.2--heae3180_0"
 
-  memory '32GB'
+  memory "32GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/qced_shortreads", mode: 'copy', pattern: "${sampleId}_qc_*.fastq.gz"
+  publishDir "${params.outdir}/${sampleId}/qced_shortreads", mode: "copy", pattern: "${sampleId}_qc_*.fastq.gz"
 
   input:
   tuple val(sampleId), path(rawShortReads1), path(rawShortReads2)
@@ -393,13 +419,13 @@ process QC_SHORTREADS {
 process INDEX_ASSEMBLY {
   tag "INDEX_ASSEMBLY:${sampleId}"
 
-  container 'quay.io/biocontainers/bwa:0.7.19--h577a1d6_1'
+  container "quay.io/biocontainers/bwa:0.7.19--h577a1d6_1"
 
-  memory '32GB'
+  memory "32GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/indexed_assembly", mode: 'copy', pattern: '${sampleId}_alignments_*.sam'
+  publishDir "${params.outdir}/${sampleId}/indexed_assembly", mode: "copy", pattern: "${sampleId}_alignments_*.sam"
 
   input:
   tuple val(sampleId), path(assembly), path(qcShortReads1), path(qcShortReads2)
@@ -423,13 +449,13 @@ process INDEX_ASSEMBLY {
 process POLISH_ASSEMBLY {
   tag "POLISH_ASSEMBLY:${sampleId}"
 
-  container 'quay.io/biocontainers/polypolish:0.6.0--h3ab6199_3'
+  container "quay.io/biocontainers/polypolish:0.6.0--h3ab6199_3"
 
-  memory '32GB'
+  memory "32GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/polished_assembly", mode: 'copy', pattern: "${sampleId}_polished_assembly.fasta"
+  publishDir "${params.outdir}/${sampleId}/polished_assembly", mode: "copy", pattern: "${sampleId}_polished_assembly.fasta"
 
   input:
   tuple val(sampleId), path(assembly), path(alignments1), path(alignments2)
@@ -454,19 +480,19 @@ process POLISH_ASSEMBLY {
 process REORIENT_ASSEMBLY {
   tag "REORIENT_ASSEMBLY:${sampleId}"
 
-  container 'wtmatlock/dnaapler:linux_amd64'
+  container "wtmatlock/dnaapler:linux_amd64"
 
-  memory '32 GB'
+  memory "32 GB"
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/reoriented_assembly", mode: 'copy', pattern: 'dnaapler_output/*.fasta'
+  publishDir "${params.outdir}/${sampleId}/reoriented_assembly", mode: "copy", pattern: "dnaapler_output/*.fasta"
 
   input:
   tuple val(sampleId), path(assembly)
 
   output:
-  tuple val(sampleId), path('dnaapler_output/*.fasta')
+  tuple val(sampleId), path("dnaapler_output/*.fasta")
 
   script:
   // Reorient the final assembly using dnaapler

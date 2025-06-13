@@ -1,4 +1,5 @@
-**Directory layout**
+# An automated Nextflow pipeline for Autocycler using Docker
+## Directory layout
 
 ```bash
 ./
@@ -27,22 +28,25 @@
     └── ...
 ```
 
-**Usage**
+## Usage
 
-Clone this repository to your local machine:
+1. You will need to install [Nextflow](https://nextflow.io/docs/latest/install.html) and [Docker](https://docs.docker.com/engine/install/).
+
+2. Clone this repository to your local machine:
 
 ```
 git clone https://github.com/wtmatlock/autocycler_pipeline.git
 cd autocycler_pipeline
 ```
 
-Add your input data to the appropriate directories:
+3. Add your input data to the appropriate directories:
 
 - Place your long-read FASTQ files in a `long_reads` directory, naming each file with its sample label (e.g. `sample1.fastq.gz`, `sample2.fastq.gz`).
-- (Optional) If you have paired-end short reads, add them to a `short_reads` directory using the convention `sample1_1.fastq.gz` and `sample1_2.fastq.gz` for each sample.
-- Before running the pipeline, review and adjust the `nextflow.config` file to set input file patterns, output directory, and resource requirements.
+- If you have paired-end short reads, add them to a `short_reads` directory using the convention `sample1_1.fastq.gz` and `sample1_2.fastq.gz` for each sample. In the `nextflow.config`, ensure that `runShortReads = true`. 
+- Review and adjust the `nextflow.config` file to set resource requirements e.g. `threads = 8` and `memory    = '16 GB'`.
 
-You can then launch the pipeline with:
+4. You can then launch the pipeline with:
 ```
-nextflow run main.nf
+nextflow run main.nf 
 ```
+> Note: if you are running on linux/arm64 (Apple Silicon), you will need to use Docker's emulation for linux/amd64.
