@@ -35,8 +35,8 @@
 2. Clone this repository to your local machine:
 
 ```
-git clone https://github.com/wtmatlock/autocycler_pipeline.git
-cd autocycler_pipeline
+git clone https://github.com/wtmatlock/autocycler-assembly.git
+cd autocycler-assembly
 ```
 
 3. Add your input data to the appropriate directories:
