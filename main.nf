@@ -31,11 +31,14 @@ workflow {
   // Step 5: Assemble each subsample with each assembler script in /bin
 
   // Note: canu takes a lot longer than the other assemblers, so only run when everything else is debugged
-  // assemblers = ["canu", "flye", "miniasm", "raven"]
+  // assemblers = ["canu"]
 
   plassemblerDatabaseChannel = DOWNLOAD_PLASSEMBLER_DB()
 
-  assemblers = ["plassembler"] //, "flye", "miniasm", "raven"]
+  // currently having issues with plassembler
+  // assemblers = ["plassembler"]
+
+  assemblers = ["flye", "miniasm", "raven"]
 
   assemblyInputs = subsampledReadsChannel.flatMap { sampleId, subsampledReads, genomeSize ->
     subsampledReads.collectMany { subsampledRead ->
