@@ -281,7 +281,10 @@ process AUTOCYCLER_COMPRESS {
 
   script:
   // Merge assembled contigs into a unitig graph
+  // Remove empty FASTA files before compression 
+  // i.e. from Plassambler when no plasmids are recovered
   """
+  find ${assembliesDir} -name '*.fasta' -size 0 -delete
   autocycler compress \\
     -i ${assembliesDir} \\
     -a . \\
@@ -487,19 +490,19 @@ process REORIENT_ASSEMBLY {
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}/reoriented_assembly", mode: "copy", pattern: "dnaapler_output/*.fasta"
+  publishDir "${params.outdir}/${sampleId}", mode: "copy", pattern: "reoriented_assembly/*.fasta"
 
   input:
   tuple val(sampleId), path(assembly)
 
   output:
-  tuple val(sampleId), path("dnaapler_output/*.fasta")
+  tuple val(sampleId), path("reoriented_assembly/*.fasta")
 
   script:
   // Reorient the final assembly using dnaapler
   """
   dnaapler all -i ${assembly} \\
-   -o dnaapler_output \\
+   -o reoriented_assembly \\
    -t ${params.threads} \\
    -p "${sampleId}"
   """
