@@ -18,9 +18,8 @@
 
 4. You can then launch the pipeline with:
    ```
-   nextflow run main.nf -with-report
+   nextflow run main.nf
    ```
-   I recommend running with the `-with-report` flag to generate a summary report, and help with locating any logs in the `work` directory.
 
 5. Outputs will be organised by sample label in the `outputs` directory. The final assembly FASTA is found in `${params.outdir}/${sampleId}/reoriented_assembly`.
 
