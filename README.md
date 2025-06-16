@@ -30,10 +30,10 @@
 
 ```mermaid
 flowchart TB
-    subgraph params
-        v0["longReadsGlob"]
-        v34["shortReadsGlob"]
-        v12["assemblers"]
+    subgraph Inputs
+        v0["Long-reads"]
+        v34["Short-reads"]
+        v12["Assemblers"]
     end
 
     v2([QC_LONGREADS])
@@ -52,7 +52,7 @@ flowchart TB
     v44([REORIENT_ASSEMBLY])
     v46([REORIENT_ASSEMBLY])
 
-    decision1{"runShortReads?"}
+    decision1{"Run short-reads?"}
 
     %% Long read flow
     v0 --> v2
