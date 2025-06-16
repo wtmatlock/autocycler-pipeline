@@ -8,4 +8,5 @@
 !nextflow.config
 !bin/
 !bin/**
+!Dockerfile
 

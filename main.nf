@@ -29,37 +29,31 @@ workflow {
   subsampledReadsChannel = AUTOCYCLER_SUBSAMPLE(subsampleInputs)
 
   // Step 5: Assemble each subsample with each assembler script in /bin
-
-  // Note: canu takes a lot longer than the other assemblers, so only run when everything else is debugged
-  // assemblers = ["canu"]
-
   plassemblerDatabaseChannel = DOWNLOAD_PLASSEMBLER_DB()
 
-  // currently having issues with plassembler
-  // assemblers = ["plassembler"]
-
-  assemblers = ["flye", "miniasm", "raven"]
+  assemblers = params.assemblers
 
   assemblyInputs = subsampledReadsChannel.flatMap { sampleId, subsampledReads, genomeSize ->
     subsampledReads.collectMany { subsampledRead ->
       def subsampleReadId = subsampledRead.baseName.replaceFirst(/\.fastq$/, "")
       assemblers.collect { assembler ->
-        tuple([
-          sampleId,
-          subsampledRead,
-          subsampleReadId,
-          genomeSize,
-          assembler,
-          file("bin/${assembler}.sh"),
-          file("bin/canu_trim.py"),
-        ])
+        tuple(
+          [
+            sampleId,
+            subsampledRead,
+            subsampleReadId,
+            genomeSize,
+            assembler,
+            file("bin/${assembler}.sh"),
+            file("bin/canu_trim.py"),
+          ]
+        )
       }
     }
   }
 
-  assemblyInputsWithDB = assemblyInputs
-    .combine(plassemblerDatabaseChannel)
-  
+  assemblyInputsWithDB = assemblyInputs.combine(plassemblerDatabaseChannel)
+
   assembledChannel = AUTOCYCLER_ASSEMBLY(assemblyInputsWithDB)
 
   // Step 6: Compress assembled contigs into unitig graphs
@@ -139,7 +133,7 @@ process QC_LONGREADS {
 
   container "quay.io/biocontainers/filtlong:0.2.1--hdcf5f25_4"
 
-  memory "32GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -154,7 +148,10 @@ process QC_LONGREADS {
   script:
   // Perform quality control on long-reads using Filtlong
   """
-  filtlong --min_length 1000 --keep_percent 95 ${rawLongReads} > ${sampleId}_qc.fastq
+  filtlong \\
+    --min_length 1000 \\
+    --keep_percent 95 ${rawLongReads} \\
+    > ${sampleId}_qc.fastq
   """
 }
 
@@ -163,7 +160,7 @@ process GENOME_SIZE_ESTIMATE {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -188,7 +185,7 @@ process AUTOCYCLER_SUBSAMPLE {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -204,11 +201,10 @@ process AUTOCYCLER_SUBSAMPLE {
   // Subsample reads using the genome size
   """
   mkdir -p subsampled_longreads
-  autocycler subsample \
-    --reads "${qcLongReads}" \
-    --out_dir subsampled_longreads \
+  autocycler subsample \\
+    --reads "${qcLongReads}" \\
+    --out_dir subsampled_longreads \\
     --genome_size \$(head -n1 "${genomeSize}")
-  echo -e "${sampleId}\tsubsampled_longreads/${sampleId}\t${genomeSize}"
   """
 }
 
@@ -217,7 +213,7 @@ process DOWNLOAD_PLASSEMBLER_DB {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -237,7 +233,7 @@ process AUTOCYCLER_ASSEMBLY {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -251,12 +247,14 @@ process AUTOCYCLER_ASSEMBLY {
 
   script:
   // Assemble reads using the specified assembler script
-  // Note: Canu requires an additional script and plassembler requires an additional database
+  // Note: Canu requires an additional script and Plassembler requires an additional database
+  // I set 'TERM=xterm-256color' so Plassembler can find Unicycler (otherwise it fails to run)
   """
+  export TERM=xterm-256color
   export PLASSEMBLER_DB="${plassemblerDB}"
   chmod +x "${script}"
   chmod +x "${canuTrim}"
-  "${script}" \\
+  ./${script} \\
     ${subsampledLongReads} \\
     "${sampleId}_${assembler}_${subsampleId}" \\
     "${params.threads}" \\
@@ -269,7 +267,7 @@ process AUTOCYCLER_COMPRESS {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -284,9 +282,9 @@ process AUTOCYCLER_COMPRESS {
   script:
   // Merge assembled contigs into a unitig graph
   """
-  autocycler compress \
-    -i ${assembliesDir} \
-    -a . \
+  autocycler compress \\
+    -i ${assembliesDir} \\
+    -a . \\
     -t ${params.threads}
   """
 }
@@ -296,7 +294,7 @@ process AUTOCYCLER_CLUSTER {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -320,7 +318,7 @@ process AUTOCYCLER_TRIM {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -346,7 +344,7 @@ process AUTOCYCLER_RESOLVE {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -372,7 +370,7 @@ process AUTOCYCLER_COMBINE {
 
   container "wtmatlock/autocycler-suite:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -387,7 +385,7 @@ process AUTOCYCLER_COMBINE {
   script:
   // Merge all resolved graphs into one final assembly per sample
   """
-  autocycler combine -a ${autocyclerDir} \
+  autocycler combine -a ${autocyclerDir} \\
                      -i ${autocyclerDir}/clustering/qc_pass/cluster_*/5_final.gfa
   """
 }
@@ -397,7 +395,7 @@ process QC_SHORTREADS {
 
   container "quay.io/biocontainers/fastp:0.24.2--heae3180_0"
 
-  memory "32GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -412,9 +410,9 @@ process QC_SHORTREADS {
   script:
   // Perform quality control on short-reads using Filtlong
   """
-  fastp --in1 ${rawShortReads1} \
-        --in2 ${rawShortReads2}  \
-        --out1 ${sampleId}_qc_1.fastq.gz \
+  fastp --in1 ${rawShortReads1} \\
+        --in2 ${rawShortReads2}  \\
+        --out1 ${sampleId}_qc_1.fastq.gz \\
         --out2 ${sampleId}_qc_2.fastq.gz
   """
 }
@@ -424,7 +422,7 @@ process INDEX_ASSEMBLY {
 
   container "quay.io/biocontainers/bwa:0.7.19--h577a1d6_1"
 
-  memory "32GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -440,11 +438,11 @@ process INDEX_ASSEMBLY {
   // Index assembly using BWA
   """
   bwa index ${assembly}
-  bwa mem -t ${params.threads} \
-          -a ${assembly} ${qcShortReads1} \
+  bwa mem -t ${params.threads} \\
+          -a ${assembly} ${qcShortReads1} \\
           > ${sampleId}_alignments_1.sam
-  bwa mem -t ${params.threads} \
-          -a ${assembly} ${qcShortReads2} \
+  bwa mem -t ${params.threads} \\
+          -a ${assembly} ${qcShortReads2} \\
           > ${sampleId}_alignments_2.sam
   """
 }
@@ -454,7 +452,7 @@ process POLISH_ASSEMBLY {
 
   container "quay.io/biocontainers/polypolish:0.6.0--h3ab6199_3"
 
-  memory "32GB"
+  memory params.memory
 
   cpus params.threads
 
@@ -469,13 +467,13 @@ process POLISH_ASSEMBLY {
   script:
   // Perform quality control on short-reads using Filtlong
   """
-  polypolish filter --in1 ${alignments1} \
-                    --in2 ${alignments2} \
-                    --out1 "${sampleId}_filtered_1.sam" \
+  polypolish filter --in1 ${alignments1} \\
+                    --in2 ${alignments2} \\
+                    --out1 "${sampleId}_filtered_1.sam" \\
                     --out2 "${sampleId}_filtered_2.sam"
-  polypolish polish ${assembly} \
-                    "${sampleId}_filtered_1.sam" \
-                    "${sampleId}_filtered_2.sam" \
+  polypolish polish ${assembly} \\
+                    "${sampleId}_filtered_1.sam" \\
+                    "${sampleId}_filtered_2.sam" \\
                     > "${sampleId}_polished_assembly.fasta"
   """
 }
@@ -485,7 +483,7 @@ process REORIENT_ASSEMBLY {
 
   container "wtmatlock/dnaapler:linux_amd64"
 
-  memory "32 GB"
+  memory params.memory
 
   cpus params.threads
 

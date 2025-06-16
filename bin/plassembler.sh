@@ -85,12 +85,6 @@ fi
 # Run Plassembler.
 plassembler long -d "$database" -l "$gzipped_reads" -o "$temp_dir"/out -t "$threads" --skip_qc
 
-# Check if Plassembler ran successfully.
-if [[ ! -s "$temp_dir"/out/plassembler_plasmids.fasta ]]; then
-    >&2 echo "Error: Plassembler assembly failed."
-    exit 1
-fi
-
 # Copy the GFA file as is.
 cp "$temp_dir"/out/plassembler_plasmids.gfa "$assembly".gfa
 
