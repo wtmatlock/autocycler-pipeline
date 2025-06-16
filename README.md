@@ -6,8 +6,8 @@
 2. Clone this repository to your local machine:
 
    ```
-   git clone https://github.com/wtmatlock/autocycler-assembly.git
-   cd autocycler-assembly
+   git clone https://github.com/wtmatlock/autocycler-pipeline.git
+   cd autocycler-pipeline
    ```
 
 3. Add your input data to the appropriate directories:
