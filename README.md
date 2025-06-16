@@ -25,6 +25,62 @@
 5. Outputs will be organised by sample label in the `outputs` directory.
 
 > Note: if you are running on linux/arm64 (Apple Silicon), you will need to use Docker's emulation for linux/amd64. This is currently the default in the `nextflow.config` with `runOptions = '--platform=linux/amd64'`.
+
+## Workflow
+
+```mermaid
+flowchart TB
+    subgraph params
+        v0["longReadsGlob"]
+        v34["shortReadsGlob"]
+        v12["assemblers"]
+    end
+
+    v2([QC_LONGREADS])
+    v5([GENOME_SIZE_ESTIMATE])
+    v8([AUTOCYCLER_SUBSAMPLE])
+    v10([DOWNLOAD_PLASSEMBLER_DB])
+    v16([AUTOCYCLER_ASSEMBLY])
+    v19([AUTOCYCLER_COMPRESS])
+    v22([AUTOCYCLER_CLUSTER])
+    v25([AUTOCYCLER_TRIM])
+    v28([AUTOCYCLER_RESOLVE])
+    v31([AUTOCYCLER_COMBINE])
+    v36([QC_SHORTREADS])
+    v39([INDEX_ASSEMBLY])
+    v42([POLISH_ASSEMBLY])
+    v44([REORIENT_ASSEMBLY])
+    v46([REORIENT_ASSEMBLY])
+
+    decision1{"runShortReads?"}
+
+    %% Long read flow
+    v0 --> v2
+    v2 --> v5
+    v2 --> v8
+    v5 --> v8
+    v8 --> v16
+    v10 --> v16
+    v12 --> v16
+    v16 --> v19
+    v19 --> v22
+    v22 --> v25
+    v25 --> v28
+    v28 --> v31
+
+    %% Conditional branching after combine
+    v31 --> decision1
+    decision1 -- Yes --> v36
+    decision1 -- No --> v46
+    v34 --> v36
+    v36 --> v39
+
+    %% Continue pipeline
+
+    v39 --> v42
+    v42 --> v44
+```
+
 ## Directory layout
 
 ```bash
