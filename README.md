@@ -25,6 +25,7 @@
 5. Outputs will be organised by sample label in the `outputs` directory. The final assembly FASTA is found in `${params.outdir}/${sampleId}/reoriented_assembly`.
 
 > Note: if you are running on linux/arm64 (Apple Silicon), you will need to use Docker's emulation for linux/amd64. This is currently the default in the `nextflow.config` with `runOptions = '--platform=linux/amd64'`.
+
 > The Dockerfile for the Autocycler container is included in this repository but is not required to run the pipeline. Currently, it is set to use the most recent version of Autocycler (v. 0.4.0).
 
 ## Workflow
