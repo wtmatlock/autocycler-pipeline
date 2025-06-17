@@ -1,11 +1,12 @@
 # A Dockerised Nextflow pipeline for Autocycler (v. 0.4.0)
+
 ## Usage
 
 1. You will need to install [Nextflow](https://nextflow.io/docs/latest/install.html) and [Docker](https://docs.docker.com/engine/install/).
 
 2. Clone this repository to your machine:
 
-   ```
+   ```bash
    git clone https://github.com/wtmatlock/autocycler-pipeline.git
    cd autocycler-pipeline
    ```
@@ -17,12 +18,12 @@
 - Review and adjust the `nextflow.config` file to set resource requirements (e.g. `threads = 8` and `memory    = '16 GB'`), and assemblers (e.g. `assemblers = ["canu", "flye", "miniasm", "plassembler", "raven"]`). Currently, the pipeline supports Canu, Flye, Miniasm, Plassembler, and Raven.
 
 4. You can then launch the pipeline with:
-   ```
+   ```bash
    nextflow run main.nf -with-report -with-trace
    ```
-   I recommend including the `-with-report` and `-with-trace` flags to make locating any logs of interest in work directories easier, as well as for reporting compuational resource usage.
+   I recommend including the `-with-report` and `-with-trace` flags to make it easier to locate relevant logs in work directories and to report computational resource usage.
 
-5. Outputs will be organised by sample label in the `outputs` directory. The final assembly FASTA is found in `${params.outdir}/${sampleId}/reoriented_assembly`.
+5. Outputs will be organised by sample label in the `outputs` directory. The final assembly FASTA can be found in `${params.outdir}/${sampleId}/reoriented_assembly`.
 
 > If you are running on linux/arm64 (Apple Silicon), you will need to use Docker's emulation for linux/amd64. This is currently the default in the `nextflow.config` with `runOptions = '--platform=linux/amd64'`.
 
