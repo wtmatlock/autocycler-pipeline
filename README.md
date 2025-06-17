@@ -51,7 +51,6 @@ flowchart TB
     v39([INDEX_ASSEMBLY])
     v42([POLISH_ASSEMBLY])
     v44([REORIENT_ASSEMBLY])
-    v46([REORIENT_ASSEMBLY])
 
     decision1{"Run short-reads?"}
 
@@ -72,7 +71,7 @@ flowchart TB
     %% Conditional branching after combine
     v31 --> decision1
     decision1 -- Yes --> v36
-    decision1 -- No --> v46
+    decision1 -- No --> v44
     v34 --> v36
     v36 --> v39
 
