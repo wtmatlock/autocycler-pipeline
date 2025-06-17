@@ -3,7 +3,7 @@
 
 1. You will need to install [Nextflow](https://nextflow.io/docs/latest/install.html) and [Docker](https://docs.docker.com/engine/install/).
 
-2. Clone this repository to your local machine:
+2. Clone this repository to your machine:
 
    ```
    git clone https://github.com/wtmatlock/autocycler-pipeline.git
@@ -26,7 +26,7 @@
 
 > If you are running on linux/arm64 (Apple Silicon), you will need to use Docker's emulation for linux/amd64. This is currently the default in the `nextflow.config` with `runOptions = '--platform=linux/amd64'`.
 
-> The Dockerfiles for the Autocycler suite (Autocycler plus assemblers) and Dnaapler are included in this repository but are not required to run the pipeline. All other Docker containers are pulled from [Biocontainers](https://biocontainers.pro).
+> The Dockerfiles for the Autocycler suite (Autocycler plus assemblers) and Dnaapler are included in this repository but are not required to run the pipeline. All other Docker containers are pulled from [BioContainers](https://biocontainers.pro).
 
 ## Workflow
 
