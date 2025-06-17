@@ -1,4 +1,4 @@
-# An Dockerised Nextflow pipeline for Autocycler (v. 0.4.0)
+# A Dockerised Nextflow pipeline for Autocycler (v. 0.4.0)
 ## Usage
 
 1. You will need to install [Nextflow](https://nextflow.io/docs/latest/install.html) and [Docker](https://docs.docker.com/engine/install/).
