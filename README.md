@@ -82,7 +82,7 @@ flowchart TB
     v42 --> v44
 ```
 
-## Directory layout
+## Directory organisation
 
 ```bash
 ./
