@@ -1,4 +1,4 @@
-# An automated Nextflow pipeline for Autocycler (v. 0.4.0) using Docker
+# An Dockerised Nextflow pipeline for Autocycler (v. 0.4.0)
 ## Usage
 
 1. You will need to install [Nextflow](https://nextflow.io/docs/latest/install.html) and [Docker](https://docs.docker.com/engine/install/).
@@ -18,8 +18,9 @@
 
 4. You can then launch the pipeline with:
    ```
-   nextflow run main.nf
+   nextflow run main.nf -with-report -with-trace
    ```
+   I recommend including the `-with-report` and `-with-trace` flags to make locating any logs of interest in work directories easier, as well as for reporting compuational resource usage.
 
 5. Outputs will be organised by sample label in the `outputs` directory. The final assembly FASTA is found in `${params.outdir}/${sampleId}/reoriented_assembly`.
 

@@ -158,7 +158,7 @@ process QC_LONGREADS {
 process GENOME_SIZE_ESTIMATE {
   tag "GENOME_SIZE_ESTIMATE:${sampleId}"
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -183,7 +183,7 @@ process GENOME_SIZE_ESTIMATE {
 process AUTOCYCLER_SUBSAMPLE {
   tag "AUTOCYCLER_SUBSAMPLE:${sampleId}"
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -211,7 +211,7 @@ process AUTOCYCLER_SUBSAMPLE {
 process DOWNLOAD_PLASSEMBLER_DB {
   tag "DOWNLOAD_PLASSEMBLER_DB"
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -231,7 +231,7 @@ process DOWNLOAD_PLASSEMBLER_DB {
 process AUTOCYCLER_ASSEMBLY {
   tag { "AUTOCYCLER_ASSEMBLY:${sampleId}:${assembler}:${subsampleId}" }
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -265,7 +265,7 @@ process AUTOCYCLER_ASSEMBLY {
 process AUTOCYCLER_COMPRESS {
   tag "AUTOCYCLER_COMPRESS:${sampleId}"
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -295,7 +295,7 @@ process AUTOCYCLER_COMPRESS {
 process AUTOCYCLER_CLUSTER {
   tag "AUTOCYCLER_CLUSTER:${sampleId}"
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -319,7 +319,7 @@ process AUTOCYCLER_CLUSTER {
 process AUTOCYCLER_TRIM {
   tag "AUTOCYCLER_TRIM:${sampleId}"
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -345,7 +345,7 @@ process AUTOCYCLER_TRIM {
 process AUTOCYCLER_RESOLVE {
   tag "AUTOCYCLER_RESOLVE:${sampleId}"
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -371,7 +371,7 @@ process AUTOCYCLER_RESOLVE {
 process AUTOCYCLER_COMBINE {
   tag "AUTOCYCLER_COMBINE:${sampleId}"
 
-  container "wtmatlock/autocycler-suite:linux_amd64"
+  container "wtmatlock/autocycler-suite:0.4.0"
 
   memory params.memory
 
@@ -484,7 +484,7 @@ process POLISH_ASSEMBLY {
 process REORIENT_ASSEMBLY {
   tag "REORIENT_ASSEMBLY:${sampleId}"
 
-  container "wtmatlock/dnaapler:linux_amd64"
+  container "wtmatlock/dnaapler:1.2.0"
 
   memory params.memory
 
