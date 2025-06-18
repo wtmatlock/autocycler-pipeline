@@ -34,11 +34,12 @@ workflow {
   assemblers = params.assemblers
 
   assemblyInputs = subsampledReadsChannel.flatMap { sampleId, subsampledReads, genomeSize ->
-    subsampledReads.collectMany { subsampledRead ->
-      def subsampleReadId = subsampledRead.baseName.replaceFirst(/\.fastq$/, "")
-      assemblers.collect { assembler ->
-        tuple(
-          [
+    subsampledReads
+      .findAll { it.name.endsWith('.fastq') }
+      .collectMany { subsampledRead ->
+        def subsampleReadId = subsampledRead.baseName.replaceFirst(/\.fastq$/, "")
+        assemblers.collect { assembler ->
+          tuple(
             sampleId,
             subsampledRead,
             subsampleReadId,
@@ -46,10 +47,9 @@ workflow {
             assembler,
             file("bin/${assembler}.sh"),
             file("bin/canu_trim.py"),
-          ]
-        )
+          )
+        }
       }
-    }
   }
 
   assemblyInputsWithDB = assemblyInputs.combine(plassemblerDatabaseChannel)
@@ -64,32 +64,39 @@ workflow {
   compressedChannel = AUTOCYCLER_COMPRESS(compressInputs)
 
   // Step 7: Cluster unitigs per sample
-  clusterInputs = compressedChannel.map { sampleId, _autocycler_dir ->
+  clusterInputs = compressedChannel.map { sampleId, _autocyclerDir ->
     tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
   }
 
   clusteredChannel = AUTOCYCLER_CLUSTER(clusterInputs)
 
   // Step 8: Trim clusters in series
-  trimInputs = clusteredChannel.map { sampleId, _autocycler_dir ->
+  trimInputs = clusteredChannel.map { sampleId, _autocyclerDir ->
     tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
   }
 
   trimmedChannel = AUTOCYCLER_TRIM(trimInputs)
 
   // Step 9: Resolve clusters in series
-  resolveInputs = trimmedChannel.map { sampleId, _autocycler_dir ->
+  resolveInputs = trimmedChannel.map { sampleId, _autocyclerDir ->
     tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
   }
 
   resolvedChannel = AUTOCYCLER_RESOLVE(resolveInputs)
 
   // Step 10: Combine final GFA graphs per sample
-  combineInputs = resolvedChannel.map { sampleId, _autocycler_dir ->
+  combineInputs = resolvedChannel.map { sampleId, _autocyclerDir ->
     tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs"))
   }
 
   combinedChannel = AUTOCYCLER_COMBINE(combineInputs)
+
+  // Step 11: Run Autocycler table to generate metrics
+  tableInputs = combinedChannel.map { sampleId, _files ->
+    [sampleId, file("${params.outdir}/${sampleId}")]
+    }.collect().map { flatList -> flatList.collate(2) }
+
+  AUTOCYCLER_TABLE(tableInputs)
 
   // Optional step: QC short-reads and polish final assembly
   if (params.runShortReads) {
@@ -103,9 +110,10 @@ workflow {
     // Index the combined assembly
     indexInputs = qcShortReadsChannel
       .join(combinedChannel, by: 0)
-      .map { sampleId, qc1, qc2, assembly ->
-        tuple(sampleId, assembly, qc1, qc2)
+      .map { sampleId, qc1, qc2, _assembly ->
+        tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs/consensus_assembly.fasta"), qc1, qc2)
       }
+
 
     indexedAssemblyChannel = INDEX_ASSEMBLY(indexInputs)
 
@@ -116,13 +124,17 @@ workflow {
 
     polishedAssemblyChannel = POLISH_ASSEMBLY(polishInputs)
 
-    // Step 11: Reorient the final assembly using dnaapler
+    // Step 12: Reorient the final assembly using dnaapler
     _reorientedAssemblyChannel = REORIENT_ASSEMBLY(polishedAssemblyChannel)
   }
   else {
 
-    // Step 11: Reorient the final assembly using dnaapler
-    _reorientedAssemblyChannel = REORIENT_ASSEMBLY(combinedChannel)
+    // Step 12: Reorient the final assembly using dnaapler
+
+    reorientInputs = combinedChannel.map { sampleId, _files ->
+    tuple(sampleId, file("${params.outdir}/${sampleId}/autocycler_outputs/consensus_assembly.fasta"))
+  }
+    _reorientedAssemblyChannel = REORIENT_ASSEMBLY(reorientInputs)
   }
 }
 
@@ -189,13 +201,13 @@ process AUTOCYCLER_SUBSAMPLE {
 
   cpus params.threads
 
-  publishDir "${params.outdir}/${sampleId}", mode: "copy", pattern: "subsampled_longreads/*.fastq"
+  publishDir "${params.outdir}/${sampleId}", mode: "copy", pattern: "subsampled_longreads/**", overwrite: true
 
   input:
   tuple val(sampleId), path(qcLongReads), path(genomeSize)
 
   output:
-  tuple val(sampleId), path("subsampled_longreads/*.fastq"), path(genomeSize)
+  tuple val(sampleId), path("subsampled_longreads/**"), path(genomeSize)
 
   script:
   // Subsample reads using the genome size
@@ -383,13 +395,46 @@ process AUTOCYCLER_COMBINE {
   tuple val(sampleId), path(autocyclerDir)
 
   output:
-  tuple val(sampleId), path("${autocyclerDir}/consensus_assembly.fasta")
+  tuple val(sampleId), path("**")
 
   script:
   // Merge all resolved graphs into one final assembly per sample
   """
   autocycler combine -a ${autocyclerDir} \\
                      -i ${autocyclerDir}/clustering/qc_pass/cluster_*/5_final.gfa
+  """
+}
+
+process AUTOCYCLER_TABLE {
+  tag "AUTOCYCLER_TABLE"
+
+  container "wtmatlock/autocycler-suite:0.4.0"
+
+  memory params.memory
+
+  cpus params.threads
+
+  publishDir "${params.outdir}", mode: "copy", overwrite: true
+
+  input:
+  val(sampleTuples)
+
+  output:
+  path("autocycler_metrics.tsv")
+
+  script:
+  // Generate Autocycler metrics table
+  // I found autocycler table works better if I copy the subsample.yaml file 
+  // to the autocycler_output directory instead of passsing the -a flag with the subsample directory
+  """
+  autocycler table > autocycler_metrics.tsv
+  ${sampleTuples.collect { tuple ->
+    def sampleId = tuple[0]
+    def path = tuple[1]
+    """
+    autocycler table -a "${path}" -n "${sampleId}" >> autocycler_metrics.tsv
+    """
+  }.join('\n')}
   """
 }
 

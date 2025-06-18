@@ -23,7 +23,7 @@
    ```
    I recommend including the `-with-report` and `-with-trace` flags to make it easier to locate relevant logs in work directories and to report computational resource usage.
 
-5. Outputs will be organised by sample label in the `outputs` directory. The final assembly FASTA can be found in `${params.outdir}/${sampleId}/reoriented_assembly`.
+5. Outputs will be organised by sample label in the `outputs` directory. The final assembly FASTA can be found in `${params.outdir}/${sampleId}/reoriented_assembly`. The output from `autocycler table` can be found in `${params.outdir}/autocycler_metrics.tsv`. See the below for the full directory organisation.
 
 > If you are running on linux/arm64 (Apple Silicon), you will need to use Docker's emulation for linux/amd64. This is currently the default in the `nextflow.config` with `runOptions = '--platform=linux/amd64'`.
 
@@ -49,6 +49,7 @@ flowchart TB
     v25([AUTOCYCLER_TRIM])
     v28([AUTOCYCLER_RESOLVE])
     v31([AUTOCYCLER_COMBINE])
+    v45([AUTOCYCLER_TABLE])
     v36([QC_SHORTREADS])
     v39([INDEX_ASSEMBLY])
     v42([POLISH_ASSEMBLY])
@@ -69,9 +70,10 @@ flowchart TB
     v22 --> v25
     v25 --> v28
     v28 --> v31
+    v31 --> v45
 
     %% Conditional branching after combine
-    v31 --> decision1
+    v45 --> decision1
     decision1 -- Yes --> v36
     decision1 -- No --> v44
     v34 --> v36
@@ -87,9 +89,9 @@ flowchart TB
 
 ```bash
 ./
-├── nextflow.config           # Nextflow config
-├── main.nf                   # Nextflow script
-├── bin/                      # Assembler helper scripts from Autocycler
+├── nextflow.config              # Nextflow config
+├── main.nf                      # Nextflow script
+├── bin/                         # Assembler helper scripts from Autocycler
 │   ├── canu_trim.py
 │   ├── canu.sh
 │   ├── flye.sh
@@ -97,17 +99,18 @@ flowchart TB
 │   ├── miniasm.sh
 │   ├── plassembler.sh
 │   └── raven.sh
-├── long_reads/               # Input long-reads
+├── long_reads/                  # Input long-reads
 │   ├── sample1.fastq.gz
 │   ├── sample2.fastq.gz
 │   └── ...
-├── short_reads/              # Input short-reads
+├── short_reads/                 # Input short-reads
 │   ├── sample1_1.fastq.gz
 │   ├── sample1_2.fastq.gz
 │   ├── sample2_1.fastq.gz
 │   ├── sample2_2.fastq.gz
 │   └── ...
-└── outputs/                  # Output directories are created
+└── outputs/                     # Output directories are created
+    ├── autocycler_metrics.tsv   # Autocycler table output
     ├── sample1/
     ├── sample2/
     └── ...
