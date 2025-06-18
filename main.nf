@@ -424,8 +424,6 @@ process AUTOCYCLER_TABLE {
 
   script:
   // Generate Autocycler metrics table
-  // I found autocycler table works better if I copy the subsample.yaml file 
-  // to the autocycler_output directory instead of passsing the -a flag with the subsample directory
   """
   autocycler table > autocycler_metrics.tsv
   ${sampleTuples.collect { tuple ->
