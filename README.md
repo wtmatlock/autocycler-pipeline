@@ -1,5 +1,13 @@
 # A Dockerised Nextflow pipeline for Autocycler (v. 0.4.0)
 
+## Citation
+
+If you use this pipeline, please cite:
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15706447.svg)](https://doi.org/10.5281/zenodo.15706447)
+
+Matlock, W. (2025). A Dockerised Nextflow pipeline for Autocycler (v. 0.4.0) (Version 1.0.2) [Computer software]. https://doi.org/10.5281/zenodo.15706447
+
 ## Usage
 
 1. You will need to install [Nextflow](https://nextflow.io/docs/latest/install.html) and [Docker](https://docs.docker.com/engine/install/).
