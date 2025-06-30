@@ -14,7 +14,7 @@ Additionally, please cite the following:
 - [Autocycler (v. 0.4.0)](https://github.com/rrwick/Autocycler)
 - [Dnaapler (v. 1.2.0)](https://github.com/gbouras13/dnaapler)
 
-Then depending on which assemblers you used:
+Then, depending on which assemblers you used:
 
 - [Canu (v. 2.3)](https://github.com/marbl/canu)
 - [Flye (v. 2.9.5)](https://github.com/mikolmogorov/Flye)
@@ -22,7 +22,7 @@ Then depending on which assemblers you used:
 - [plassembler (v. 1.7.0)](https://github.com/gbouras13/plassembler)
 - [Raven (v. 1.8.3)](https://github.com/lbcb-sci/raven)
 
-And if you used the short-read functionality:
+And, if you used the short-read functionality:
 
 - [fastp (v. 0.24.2)](https://github.com/OpenGene/fastp)
 - [BWA (v. 0.7.19)](https://github.com/lh3/bwa)
