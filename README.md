@@ -1,4 +1,4 @@
-# A Dockerised Nextflow pipeline for Autocycler (v. 0.4.0)
+# A Dockerised Nextflow pipeline for Autocycler
 
 ## Citation
 
